@@ -1,0 +1,52 @@
+service:
+  name: React App Service
+  identifier: react_app_service
+  projectIdentifier: DEFAULT_PROJECT
+  orgIdentifier: default
+  description: React application service definition
+  
+  serviceDefinition:
+    type: Kubernetes
+    spec:
+      artifacts:
+        - sidecars: []
+          primary:
+            type: DockerRegistry
+            spec:
+              connectorRef: docker_hub_connector
+              imagePath: <+input>
+              tag: <+input>
+              autoPopulate: true
+              digest: <+input>
+      manifests:
+        - manifest:
+            identifier: react_app_k8s_manifest
+            type: K8sManifest
+            spec:
+              store:
+                type: Github
+                spec:
+                  connectorRef: github_connector
+                  gitFetchType: Branch
+                  paths:
+                    - k8s/
+                  repoName: <+input>
+                  branch: main
+      variables:
+        - name: app_name
+          type: String
+          value: react-app
+        
+        - name: app_port
+          type: String
+          value: "3000"
+        
+        - name: replicas
+          type: String
+          value: "3"
+        
+        - name: image_pull_policy
+          type: String
+          value: IfNotPresent
+  
+  gitOpsEnabled: false

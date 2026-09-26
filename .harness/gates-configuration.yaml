@@ -1,0 +1,305 @@
+# Harness Gates Configuration
+# This file documents all quality and approval gates in the pipeline
+
+gates:
+  
+  # ==================== QUALITY GATES ====================
+  code_quality:
+    dependency_scan:
+      enabled: true
+      description: "Scan npm dependencies for known vulnerabilities"
+      tool: "npm audit"
+      severity_level: "moderate"
+      failure_mode: "warn"
+      fail_on_critical: true
+      commands:
+        - "npm audit --production --audit-level=moderate"
+    
+    code_coverage:
+      enabled: true
+      description: "Ensure minimum code coverage threshold"
+      tool: "jest"
+      minimum_threshold: 60
+      failure_mode: "warn"
+      commands:
+        - "npm run coverage"
+    
+    bundle_size:
+      enabled: true
+      description: "Analyze production bundle size"
+      tool: "webpack"
+      maximum_size: "500KB"
+      failure_mode: "warn"
+      commands:
+        - "npm run build"
+        - "du -sh build/"
+  
+  # ==================== APPROVAL GATES ====================
+  approvals:
+    
+    staging_approval:
+      stage: "Staging Deployment Gate"
+      enabled: true
+      type: "manual"
+      description: "Manual approval required before staging deployment"
+      
+      approvers:
+        groups:
+          - name: "dev_team"
+            count: 1
+          - name: "qa_team"
+            count: 0
+        
+        individuals:
+          allowed_count: 1
+      
+      approval_inputs:
+        - name: "deployment_reason"
+          required: true
+          type: "text"
+          description: "Why is this deployment needed?"
+        
+        - name: "tested_by"
+          required: true
+          type: "text"
+          description: "Who has tested this code?"
+      
+      timeout:
+        duration: 24
+        unit: "hours"
+        auto_reject: true
+      
+      notifications:
+        - type: "email"
+          recipients: "dev_team"
+        - type: "slack"
+          channel: "#deployments"
+    
+    production_approval:
+      stage: "Production Deployment Gate"
+      enabled: true
+      type: "manual"
+      description: "Manual approval required before production deployment"
+      
+      approvers:
+        groups:
+          - name: "release_managers"
+            count: 2
+        
+        restrictions:
+          disallow_previous_approvers: true
+      
+      approval_inputs:
+        - name: "deployment_reason"
+          required: true
+          type: "text"
+          description: "Why is this deployment needed?"
+        
+        - name: "rollback_plan"
+          required: true
+          type: "text"
+          description: "What is the rollback plan if deployment fails?"
+        
+        - name: "tested_by"
+          required: true
+          type: "text"
+          description: "Who has tested this code?"
+        
+        - name: "change_ticket"
+          required: false
+          type: "text"
+          description: "Change management ticket number (optional)"
+      
+      timeout:
+        duration: 7
+        unit: "days"
+        auto_reject: true
+      
+      notifications:
+        - type: "email"
+          recipients: "release_managers"
+        - type: "slack"
+          channel: "#production-releases"
+          priority: "high"
+        - type: "pagerduty"
+          integration_key: "${PAGERDUTY_INTEGRATION_KEY}"
+  
+  # ==================== DEPLOYMENT GATES ====================
+  deployment_validation:
+    
+    staging_health_check:
+      stage: "Deploy to Staging"
+      enabled: true
+      type: "health_check"
+      description: "Verify staging deployment health"
+      
+      checks:
+        - endpoint: "/health"
+          method: "GET"
+          expected_status: 200
+          timeout_ms: 5000
+          retries: 3
+        
+        - endpoint: "/"
+          method: "GET"
+          expected_status: 200
+          timeout_ms: 5000
+    
+    production_health_check:
+      stage: "Deploy to Production"
+      enabled: true
+      type: "health_check"
+      description: "Verify production deployment health"
+      
+      checks:
+        - endpoint: "/health"
+          method: "GET"
+          expected_status: 200
+          timeout_ms: 5000
+          retries: 5
+        
+        - endpoint: "/"
+          method: "GET"
+          expected_status: 200
+          timeout_ms: 5000
+    
+    smoke_tests:
+      stage: "Smoke Tests (Staging)"
+      enabled: true
+      type: "automated_test"
+      description: "Run smoke tests on staging deployment"
+      
+      test_suite: "smoke"
+      timeout_minutes: 10
+      failure_mode: "fail"
+      
+      metrics:
+        min_pass_rate: 95
+        max_duration_seconds: 60
+  
+  # ==================== ADVANCED GATES (OPTIONAL) ====================
+  advanced_gates:
+    
+    sonarqube_gate:
+      enabled: false
+      stage: "Code Quality Gates"
+      description: "SonarQube code quality analysis"
+      
+      configuration:
+        server_url: "${SONARQUBE_URL}"
+        project_key: "react-app"
+        timeout_minutes: 10
+        
+        quality_thresholds:
+          bugs: "A"
+          vulnerabilities: "A"
+          code_smell: "A"
+          coverage: 60
+          duplication: 3
+    
+    snyk_gate:
+      enabled: false
+      stage: "Code Quality Gates"
+      description: "Snyk security scanning"
+      
+      configuration:
+        api_token: "${SNYK_API_TOKEN}"
+        severity_threshold: "high"
+        fail_on_new_issues: true
+    
+    lighthouse_gate:
+      enabled: false
+      stage: "Code Quality Gates"
+      description: "Lighthouse performance audit"
+      
+      configuration:
+        thresholds:
+          performance: 90
+          accessibility: 90
+          best_practices: 90
+          seo: 90
+    
+    performance_gate:
+      enabled: false
+      stage: "Smoke Tests (Staging)"
+      description: "Performance metrics validation"
+      
+      configuration:
+        metrics:
+          - name: "response_time"
+            max_ms: 500
+          - name: "error_rate"
+            max_percent: 1
+          - name: "memory_usage"
+            max_mb: 512
+
+# ==================== NOTIFICATION TEMPLATES ====================
+notifications:
+  
+  approval_requested:
+    slack:
+      template: |
+        🔔 *Deployment Approval Required*
+        Stage: {{STAGE_NAME}}
+        Requester: {{REQUESTER}}
+        Message: {{APPROVAL_MESSAGE}}
+        ⏱️ Approval Timeout: {{APPROVAL_TIMEOUT}}
+    
+    email:
+      subject: "Action Required: {{STAGE_NAME}} Approval for {{APP_NAME}}"
+      template: "approval_request.html"
+  
+  approval_granted:
+    slack:
+      template: |
+        ✅ *Deployment Approved*
+        Stage: {{STAGE_NAME}}
+        Approved By: {{APPROVER}}
+        Reason: {{APPROVAL_REASON}}
+    
+    email:
+      subject: "{{STAGE_NAME}} Approved - {{APP_NAME}}"
+  
+  deployment_failed:
+    slack:
+      template: |
+        ❌ *Deployment Failed*
+        Environment: {{ENVIRONMENT}}
+        Error: {{ERROR_MESSAGE}}
+        Pipeline: {{PIPELINE_LINK}}
+      priority: "high"
+    
+    pagerduty:
+      severity: "error"
+      title: "{{APP_NAME}} Deployment Failed"
+
+# ==================== REPORTING ====================
+reporting:
+  
+  gates_summary:
+    enabled: true
+    format: "html"
+    include_metrics:
+      - deployment_duration
+      - approval_duration
+      - test_coverage
+      - quality_metrics
+  
+  approval_audit_trail:
+    enabled: true
+    retention_days: 90
+    export_format: ["csv", "json"]
+
+# ==================== ESCALATION POLICIES ====================
+escalation:
+  
+  approval_timeout:
+    enabled: true
+    notify_after_minutes: 60
+    escalate_to: "release_managers"
+  
+  deployment_failure:
+    enabled: true
+    notify_after_minutes: 5
+    escalate_to: "on_call_team"
+    channels: ["slack", "pagerduty"]

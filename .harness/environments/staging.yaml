@@ -1,0 +1,52 @@
+environment:
+  name: Staging
+  identifier: staging
+  projectIdentifier: DEFAULT_PROJECT
+  orgIdentifier: default
+  description: Staging environment for React application
+  type: Production
+  
+  tags:
+    - staging
+    - pre-prod
+  
+  variables:
+    - name: environment_name
+      type: String
+      value: staging
+    
+    - name: replicas
+      type: String
+      value: "2"
+    
+    - name: resource_cpu
+      type: String
+      value: "250m"
+    
+    - name: resource_memory
+      type: String
+      value: "512Mi"
+    
+    - name: log_level
+      type: String
+      value: "INFO"
+    
+    - name: api_endpoint
+      type: String
+      value: https://api-staging.example.com
+    
+    - name: cdn_url
+      type: String
+      value: https://cdn-staging.example.com
+  
+  environmentConfigs:
+    - identifier: staging_config
+      config:
+        spec:
+          infrastructure:
+            type: KubernetesDirect
+            spec:
+              connectorRef: staging_k8s_connector
+              namespace: default
+              releaseName: react-app-staging
+        credentialsRef: staging_credentials

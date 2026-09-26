@@ -1,0 +1,59 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: react-app
+  namespace: default
+  labels:
+    app: react-app
+    environment: staging
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: react-app
+      environment: staging
+  template:
+    metadata:
+      labels:
+        app: react-app
+        environment: staging
+    spec:
+      containers:
+        - name: react-app
+          image: <+service.variables.docker_image>
+          imagePullPolicy: IfNotPresent
+          ports:
+            - containerPort: 3000
+              name: http
+          
+          env:
+            - name: NODE_ENV
+              value: "staging"
+            - name: API_ENDPOINT
+              value: https://api-staging.example.com
+            - name: LOG_LEVEL
+              value: "INFO"
+          
+          resources:
+            requests:
+              cpu: 250m
+              memory: 512Mi
+            limits:
+              cpu: 500m
+              memory: 1Gi
+          
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 3000
+            initialDelaySeconds: 30
+            periodSeconds: 10
+            failureThreshold: 3
+          
+          readinessProbe:
+            httpGet:
+              path: /ready
+              port: 3000
+            initialDelaySeconds: 10
+            periodSeconds: 5
+            failureThreshold: 2

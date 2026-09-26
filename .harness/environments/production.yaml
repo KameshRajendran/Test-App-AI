@@ -1,0 +1,53 @@
+environment:
+  name: Production
+  identifier: production
+  projectIdentifier: DEFAULT_PROJECT
+  orgIdentifier: default
+  description: Production environment for React application
+  type: Production
+  
+  tags:
+    - production
+    - prod
+    - live
+  
+  variables:
+    - name: environment_name
+      type: String
+      value: production
+    
+    - name: replicas
+      type: String
+      value: "5"
+    
+    - name: resource_cpu
+      type: String
+      value: "500m"
+    
+    - name: resource_memory
+      type: String
+      value: "1Gi"
+    
+    - name: log_level
+      type: String
+      value: "WARN"
+    
+    - name: api_endpoint
+      type: String
+      value: https://api.example.com
+    
+    - name: cdn_url
+      type: String
+      value: https://cdn.example.com
+  
+  environmentConfigs:
+    - identifier: prod_config
+      config:
+        spec:
+          infrastructure:
+            type: KubernetesDirect
+            spec:
+              connectorRef: prod_k8s_connector
+              namespace: production
+              releaseName: react-app-prod
+        credentialsRef: prod_credentials

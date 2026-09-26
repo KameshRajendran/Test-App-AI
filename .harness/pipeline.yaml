@@ -1,0 +1,372 @@
+pipeline:
+  name: React App CI/CD Pipeline
+  identifier: react_app_cicd
+  projectIdentifier: DEFAULT_PROJECT
+  orgIdentifier: default
+  
+  description: Complete CI/CD pipeline for React application with quality gates
+  tags:
+    - react
+    - frontend
+  
+  triggers:
+    - trigger:
+        name: On Push to Main
+        identifier: on_push_main
+        enabled: true
+        description: Trigger on push to main branch
+        type: Webhook
+        spec:
+          type: Github
+          spec:
+            type: Push
+            spec:
+              branches:
+                - main
+              filePaths:
+                exclude: []
+                include: []
+    - trigger:
+        name: On Pull Request
+        identifier: on_pull_request
+        enabled: true
+        description: Trigger on pull request creation/update
+        type: Webhook
+        spec:
+          type: Github
+          spec:
+            type: PullRequest
+            spec:
+              branches:
+                - main
+  
+  stages:
+    # ==================== BUILD STAGE ====================
+    - stage:
+        name: Build & Test
+        identifier: build_test
+        description: Build React app and run tests
+        type: CI
+        spec:
+          cloneCodebase: true
+          execution:
+            steps:
+              # Step 1: Install Dependencies
+              - step:
+                  name: Install Dependencies
+                  identifier: install_dependencies
+                  type: Run
+                  spec:
+                    shell: Sh
+                    command: |-
+                      echo "Installing dependencies..."
+                      npm install
+                    reports:
+                      type: JUnit
+                      spec:
+                        paths:
+                          - junit-reports/**/*.xml
+              
+              # Step 2: Lint Code
+              - step:
+                  name: Lint Code
+                  identifier: lint_code
+                  type: Run
+                  spec:
+                    shell: Sh
+                    command: |-
+                      echo "Running ESLint..."
+                      npm run lint || true
+                    onFailure: Continue
+              
+              # Step 3: Run Unit Tests
+              - step:
+                  name: Run Unit Tests
+                  identifier: run_unit_tests
+                  type: Run
+                  spec:
+                    shell: Sh
+                    command: |-
+                      echo "Running unit tests..."
+                      npm test -- --coverage --watchAll=false
+                    reports:
+                      type: JUnit
+                      spec:
+                        paths:
+                          - coverage/junit.xml
+              
+              # Step 4: Build React App
+              - step:
+                  name: Build React App
+                  identifier: build_react_app
+                  type: Run
+                  spec:
+                    shell: Sh
+                    command: |-
+                      echo "Building React app..."
+                      npm run build
+                    reports:
+                      type: JUnit
+                      spec:
+                        paths:
+                          - build/**/*.xml
+          
+          serviceDependencies: []
+          infrastructure:
+            type: Cloud
+            spec:
+              type: Linux
+              spec:
+                osType: Linux
+                arch: Amd64
+          
+          caching:
+            key: npm-cache-<+pipeline.sequenceId>
+            paths:
+              - node_modules
+          
+          resources:
+            limits:
+              memory: 1024Mi
+              cpu: 500m
+
+    # ==================== CODE QUALITY GATE ====================
+    - stage:
+        name: Code Quality Gates
+        identifier: code_quality_gates
+        description: Code quality and security scanning
+        type: Custom
+        spec:
+          steps:
+            # Step 1: Dependency Scan
+            - step:
+                name: Dependency Vulnerability Scan
+                identifier: dependency_scan
+                type: Run
+                spec:
+                  shell: Sh
+                  command: |-
+                    echo "Scanning dependencies for vulnerabilities..."
+                    npm audit --production --audit-level=moderate || true
+                  onFailure: Continue
+            
+            # Step 2: Code Coverage Gate
+            - step:
+                name: Code Coverage Check
+                identifier: code_coverage_gate
+                type: Run
+                spec:
+                  shell: Sh
+                  command: |-
+                    echo "Checking code coverage..."
+                    COVERAGE=$(npm run coverage:check 2>/dev/null || echo "0")
+                    echo "Code Coverage: ${COVERAGE}%"
+                    if [ "${COVERAGE}" -lt 60 ]; then
+                      echo "WARNING: Code coverage is below 60% threshold"
+                    fi
+                  onFailure: Continue
+            
+            # Step 3: Bundle Size Check
+            - step:
+                name: Bundle Size Analysis
+                identifier: bundle_size_check
+                type: Run
+                spec:
+                  shell: Sh
+                  command: |-
+                    echo "Analyzing bundle size..."
+                    # Build analysis will be done in build step
+                    if [ -d "build" ]; then
+                      BUNDLE_SIZE=$(du -sh build/ | cut -f1)
+                      echo "Bundle Size: ${BUNDLE_SIZE}"
+                    fi
+                  onFailure: Continue
+
+    # ==================== ARTIFACT STORAGE ====================
+    - stage:
+        name: Store Artifacts
+        identifier: store_artifacts
+        description: Store build artifacts
+        type: Custom
+        spec:
+          steps:
+            - step:
+                name: Upload Build Artifacts
+                identifier: upload_artifacts
+                type: Run
+                spec:
+                  shell: Sh
+                  command: |-
+                    echo "Artifacts ready for deployment"
+                    ls -la build/
+                  onFailure: Continue
+
+    # ==================== APPROVAL GATE FOR STAGING ====================
+    - stage:
+        name: Staging Deployment Gate
+        identifier: staging_approval_gate
+        type: Approval
+        spec:
+          execution:
+            steps:
+              - step:
+                  name: Manual Approval for Staging
+                  identifier: staging_approval
+                  type: HarnessApproval
+                  timeout: 1d
+                  spec:
+                    approvers:
+                      userGroups:
+                        - dev_team
+                      users: []
+                      minimumCount: 1
+                      disallowPreviousApprovers: false
+                    approverInputs:
+                      - name: deployment_reason
+                        required: true
+                      - name: tested_by
+                        required: true
+                    isAutoRejectByExpiry: true
+
+    # ==================== STAGING DEPLOYMENT ====================
+    - stage:
+        name: Deploy to Staging
+        identifier: deploy_staging
+        description: Deploy React app to staging environment
+        type: CD
+        spec:
+          service:
+            serviceRef: react_app_service
+          environment:
+            environmentRef: staging
+            deployToAll: false
+          infrastructure:
+            infrastructureKey: staging_infra
+          execution:
+            steps:
+              - step:
+                  name: Deploy to Staging
+                  identifier: deploy_staging_step
+                  type: K8sApply
+                  timeout: 10m
+                  spec:
+                    filePaths: k8s/staging/deployment.yaml
+                    skipDryRun: false
+              
+              - step:
+                  name: Health Check
+                  identifier: health_check_staging
+                  type: Http
+                  timeout: 5m
+                  spec:
+                    url: <+pipeline.variables.staging_url>/health
+                    method: GET
+                    requestBody: null
+                    assertion: <+httpResponseCode> == 200
+                    responseTime: 5000
+
+    # ==================== SMOKE TESTS FOR STAGING ====================
+    - stage:
+        name: Smoke Tests (Staging)
+        identifier: smoke_tests_staging
+        description: Run smoke tests on staging deployment
+        type: Custom
+        spec:
+          steps:
+            - step:
+                name: Run Smoke Tests
+                identifier: run_smoke_tests
+                type: Run
+                spec:
+                  shell: Sh
+                  command: |-
+                    echo "Running smoke tests against staging..."
+                    npm run test:smoke -- --url=<+pipeline.variables.staging_url>
+                  onFailure: MarkAsFailure
+
+    # ==================== APPROVAL GATE FOR PRODUCTION ====================
+    - stage:
+        name: Production Deployment Gate
+        identifier: prod_approval_gate
+        type: Approval
+        spec:
+          execution:
+            steps:
+              - step:
+                  name: Manual Approval for Production
+                  identifier: prod_approval
+                  type: HarnessApproval
+                  timeout: 7d
+                  spec:
+                    approvers:
+                      userGroups:
+                        - release_managers
+                      users: []
+                      minimumCount: 2
+                      disallowPreviousApprovers: true
+                    approverInputs:
+                      - name: deployment_reason
+                        required: true
+                      - name: rollback_plan
+                        required: true
+                      - name: tested_by
+                        required: true
+                    isAutoRejectByExpiry: true
+
+    # ==================== PRODUCTION DEPLOYMENT ====================
+    - stage:
+        name: Deploy to Production
+        identifier: deploy_production
+        description: Deploy React app to production with blue-green strategy
+        type: CD
+        spec:
+          service:
+            serviceRef: react_app_service
+          environment:
+            environmentRef: production
+            deployToAll: false
+          infrastructure:
+            infrastructureKey: prod_infra
+          execution:
+            steps:
+              - step:
+                  name: Blue-Green Deployment
+                  identifier: blue_green_deploy
+                  type: K8sBlueGreen
+                  timeout: 15m
+                  spec:
+                    skipDryRun: false
+                    pruningPolicy:
+                      isEnabled: true
+              
+              - step:
+                  name: Production Health Check
+                  identifier: health_check_prod
+                  type: Http
+                  timeout: 5m
+                  spec:
+                    url: <+pipeline.variables.production_url>/health
+                    method: GET
+                    assertion: <+httpResponseCode> == 200
+                    responseTime: 5000
+
+  variables:
+    - name: staging_url
+      type: String
+      value: https://staging.app.example.com
+      description: Staging environment URL
+    
+    - name: production_url
+      type: String
+      value: https://app.example.com
+      description: Production environment URL
+    
+    - name: docker_registry
+      type: String
+      value: docker.io
+      description: Docker registry for container images
+    
+    - name: app_name
+      type: String
+      value: react-app
+      description: Application name

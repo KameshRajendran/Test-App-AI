@@ -1,0 +1,102 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: react-app
+  namespace: default
+  labels:
+    app: react-app
+    version: v1
+spec:
+  replicas: 3
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 1
+      maxUnavailable: 0
+  selector:
+    matchLabels:
+      app: react-app
+  template:
+    metadata:
+      labels:
+        app: react-app
+        version: v1
+    spec:
+      containers:
+        - name: react-app
+          image: <+service.variables.docker_image>
+          imagePullPolicy: IfNotPresent
+          ports:
+            - containerPort: 3000
+              name: http
+              protocol: TCP
+          
+          env:
+            - name: NODE_ENV
+              value: "production"
+            - name: API_ENDPOINT
+              value: <+env.variables.api_endpoint>
+            - name: CDN_URL
+              value: <+env.variables.cdn_url>
+            - name: LOG_LEVEL
+              value: <+env.variables.log_level>
+          
+          resources:
+            requests:
+              cpu: <+env.variables.resource_cpu>
+              memory: <+env.variables.resource_memory>
+            limits:
+              cpu: "1000m"
+              memory: "2Gi"
+          
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 3000
+            initialDelaySeconds: 30
+            periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 3
+          
+          readinessProbe:
+            httpGet:
+              path: /ready
+              port: 3000
+            initialDelaySeconds: 10
+            periodSeconds: 5
+            timeoutSeconds: 3
+            failureThreshold: 2
+          
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: 1000
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop:
+                - ALL
+          
+          volumeMounts:
+            - name: tmp
+              mountPath: /tmp
+            - name: cache
+              mountPath: /app/.cache
+      
+      volumes:
+        - name: tmp
+          emptyDir: {}
+        - name: cache
+          emptyDir: {}
+      
+      affinity:
+        podAntiAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution:
+            - weight: 100
+              podAffinityTerm:
+                labelSelector:
+                  matchExpressions:
+                    - key: app
+                      operator: In
+                      values:
+                        - react-app
+                topologyKey: kubernetes.io/hostname

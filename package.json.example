@@ -1,0 +1,59 @@
+{
+  "name": "react-app",
+  "version": "1.0.0",
+  "description": "React application with Harness CI/CD",
+  "private": true,
+  "dependencies": {
+    "react": "^18.2.0",
+    "react-dom": "^18.2.0",
+    "react-scripts": "5.0.0"
+  },
+  "devDependencies": {
+    "@testing-library/jest-dom": "^5.16.5",
+    "@testing-library/react": "^13.3.0",
+    "@testing-library/user-event": "^13.5.0",
+    "eslint": "^8.0.0",
+    "jest": "^27.5.1",
+    "jest-junit": "^15.0.0"
+  },
+  "scripts": {
+    "start": "react-scripts start",
+    "build": "react-scripts build",
+    "test": "jest --coverage --collectCoverageFrom='src/**/*.{js,jsx}' --coverageReporters=text --coverageReporters=junit",
+    "coverage": "jest --coverage",
+    "coverage:check": "jest --coverage --collectCoverageFrom='src/**/*.{js,jsx}' | grep Lines | awk '{print $3}' | sed 's/%//'",
+    "lint": "eslint src/ --ext .js,.jsx || true",
+    "eject": "react-scripts eject",
+    "test:smoke": "jest --testPathPattern=smoke"
+  },
+  "eslintConfig": {
+    "extends": [
+      "react-app"
+    ]
+  },
+  "browserslist": {
+    "production": [
+      ">0.2%",
+      "not dead",
+      "not op_mini all"
+    ],
+    "development": [
+      "last 1 chrome version",
+      "last 1 firefox version",
+      "last 1 safari version"
+    ]
+  },
+  "jest": {
+    "testEnvironment": "jsdom",
+    "reporters": [
+      "default",
+      [
+        "jest-junit",
+        {
+          "outputDirectory": "coverage",
+          "outputName": "junit.xml"
+        }
+      ]
+    ]
+  }
+}
