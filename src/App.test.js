@@ -23,7 +23,6 @@ describe('App Component', () => {
   test('increment button increases count', () => {
     render(<App />);
     const incrementBtn = screen.getByTestId('increment-btn');
-    const countDisplay = screen.getByText(/0/);
     
     fireEvent.click(incrementBtn);
     
