@@ -40,7 +40,7 @@ describe('App Component', () => {
     fireEvent.click(incrementBtn);
     fireEvent.click(resetBtn);
     
-    const countDisplay = screen.getByText('Count:');
+    const countDisplay = screen.getByText(/0/);
     expect(countDisplay).toBeInTheDocument();
   });
 
